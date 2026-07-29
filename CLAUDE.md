@@ -70,11 +70,20 @@ checkpoints; see the `embedded-ai-chain` parent repo's `docs/shared-storage.md`.
 
 ## Current State
 
-Initial scaffold — `scripts/live_transcribe.py` is a single-process simplification of
-`whisper_trt`'s multiprocess ReSpeaker-array example, adapted for this project's
-actual hardware (single-channel Jabra USB mic, confirmed in Phase 0 of the
-`embedded-ai-chain` parent repo). Not yet wired into that repo's `scene_state.py` as a
-producer — that integration is Phase 1 work in the parent repo, not this one.
+Verified working end-to-end 2026-07-29: `make validate` (16/16 checks, including
+detecting the Jabra mic inside the container), `make transcribe-file` (correct
+transcription of a real speech sample — the standard Harvard Sentences test audio),
+and `make benchmark` (whisper_trt 2.4x faster than the PyTorch baseline on `tiny.en`,
+in line with upstream's own published numbers) all pass. See the README's
+"Compatibility patches" note for the four fixes this took against this base image's
+much-newer PyTorch than `whisper_trt`/`torch2trt` were built against.
+
+`scripts/live_transcribe.py` (mic → VAD → transcribe loop) is implemented but not yet
+smoke-tested against a live microphone in this session — it's a single-process
+simplification of `whisper_trt`'s multiprocess ReSpeaker-array example, adapted for
+this project's actual hardware (single-channel Jabra USB mic, confirmed in Phase 0 of
+the `embedded-ai-chain` parent repo). Not yet wired into that repo's `scene_state.py`
+as a producer — that integration is Phase 1 work in the parent repo, not this one.
 
 ## Key Dependencies
 

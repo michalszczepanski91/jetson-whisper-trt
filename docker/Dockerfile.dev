@@ -18,8 +18,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
+# openai-whisper's setup.py is old-style and imports pkg_resources at build
+# time; pip's isolated build env picks up a setuptools that doesn't bundle
+# pkg_resources by default, so it fails unless we tell it to build using the
+# base image's own (already-working) setuptools instead.
+RUN pip3 install --no-cache-dir --no-build-isolation openai-whisper==20240930
+
+# Patch: force MultiHeadAttention.use_sdpa off by default — see the note in
+# the production Dockerfile. whisper_trt's engine-building code expects an
+# explicit `mask` tensor input (the manual attention path); this whisper
+# version's default SDPA fast path applies masking internally instead,
+# producing "Invalid tensor name: mask" errors and garbled output.
+RUN sed -i 's/    use_sdpa = True/    use_sdpa = False/' \
+    /usr/local/lib/python3.12/dist-packages/whisper/model.py
+
 RUN pip3 install --no-cache-dir \
-    openai-whisper==20240930 \
     onnxruntime==1.20.1 \
     pyaudio==0.2.14 \
     psutil==5.9.8 \
@@ -34,15 +47,28 @@ RUN pip3 install --no-cache-dir \
     isort==5.13.2 \
     flake8==7.0.0
 
+# onnx_graphsurgeon — NVIDIA's private package index, not on public PyPI. Needed
+# by torch2trt at engine-build time (whisper_trt's decoder conversion path hits
+# `import onnx_graphsurgeon` inside torch2trt.torch2trt()).
+RUN pip3 install --no-cache-dir onnx onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+
+# Patch: force the legacy TorchScript-based ONNX exporter — see the note in
+# the production Dockerfile. This base image's PyTorch (2.11) defaults
+# torch.onnx.export() to the dynamo-based exporter, which is incompatible
+# with torch2trt's use of the legacy `dynamic_axes` argument.
 RUN git clone https://github.com/NVIDIA-AI-IOT/torch2trt /opt/torch2trt \
     && cd /opt/torch2trt \
     && git checkout 4e820ae31b4e35d59685935223b05b2e11d47b03 \
+    && sed -i 's/opset_version=onnx_opset/opset_version=onnx_opset,\n            dynamo=False/' torch2trt/torch2trt.py \
     && python3 setup.py install
 
+# --no-build-isolation: see the note in the production Dockerfile — its
+# setup.py transitively imports `whisper`, which isn't visible inside a fresh
+# isolated build sandbox.
 RUN git clone https://github.com/NVIDIA-AI-IOT/whisper_trt /opt/whisper_trt \
     && cd /opt/whisper_trt \
     && git checkout 268eff10a1e38118a2734745b9db14f7419a08a5 \
-    && pip3 install --no-cache-dir .
+    && pip3 install --no-cache-dir --no-build-isolation .
 
 # Jupyter port
 EXPOSE 8888

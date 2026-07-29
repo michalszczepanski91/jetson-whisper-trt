@@ -57,6 +57,31 @@ model classes directly (`whisper.model.LayerNorm`/`Linear`/`Whisper`, not a stab
 public API), so `openai-whisper` is pinned to the release contemporaneous with
 `whisper_trt`'s last commit to minimize the risk of internal-API drift.
 
+Even with that pin, the base image's PyTorch (2.11, March 2026) is far newer than
+anything `whisper_trt`/`torch2trt` (last touched mid/late-2024) were built or tested
+against. Getting a real end-to-end transcription working required four patches,
+applied in the `Dockerfile`s via `sed` against the installed packages (not forks —
+see each patch's inline comment for the full explanation):
+
+1. **`pip3 install --no-build-isolation`** for both `openai-whisper` and `whisper_trt` —
+   their old-style `setup.py`s need packages (`pkg_resources`, transitively `whisper`
+   itself) that a fresh pip isolated-build sandbox doesn't have.
+2. **`onnx-graphsurgeon`** — a `torch2trt` runtime dependency not on public PyPI
+   (NVIDIA's own index), only needed the first time an engine is actually built.
+3. **`dynamo=False`** on `torch2trt`'s internal `torch.onnx.export()` call — this
+   PyTorch defaults to the newer dynamo-based ONNX exporter, whose
+   `dynamic_axes`→`dynamic_shapes` shim is broken for `torch2trt`'s call shape.
+4. **`MultiHeadAttention.use_sdpa = False`** (whisper's own toggle, just flipping its
+   default) — this whisper version's default fast-attention path applies causal
+   masking internally via `is_causal` rather than an explicit `mask` tensor, but
+   `whisper_trt`'s TensorRT engine-building code expects `mask` as an explicit input.
+   Without this, engines build "successfully" but produce garbled, repetitive
+   transcriptions and `Invalid tensor name: mask` errors at inference time — a much
+   nastier failure mode than a build error, since it doesn't fail loudly.
+
+If `whisper_trt` or `torch2trt` ever get updated upstream, these patches should be
+revisited — they may no longer be needed, or may need adjusting for a new pinned commit.
+
 ---
 
 ## Workflow
