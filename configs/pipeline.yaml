@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────
+#  WhisperTRT STT Pipeline — Runtime Config
+#  Jetson Orin / JetPack 6.x
+# ─────────────────────────────────────────────
+
+audio:
+  device_name_contains: "jabra"  # substring match against PortAudio device names,
+                                  # not a raw ALSA hw:X,Y index — those don't map 1:1
+                                  # onto PortAudio's own enumeration inside the container.
+                                  # Matches the Jabra EVOLVE 30 II confirmed in Phase 0
+                                  # (embedded-ai-chain docs/environment.md) as the only
+                                  # mic that captures native mono without resampling.
+  device_index: null             # set to override device_name_contains with an exact
+                                  # PortAudio index (see `make list-devices`)
+  sample_rate: 16000
+  channels: 1
+  chunk_size: 1536                # matches whisper_trt's VAD example chunk size
+
+model:
+  size: base.en                   # tiny.en | base.en | small.en — base.en is the Phase 1 pick
+                                   # (embedded-ai-chain docs/TODO.md): lowest-friction option
+  backend: whisper_trt            # whisper_trt | whisper | faster_whisper (for benchmark.py only —
+                                   # the live pipeline always uses whisper_trt)
+
+vad:
+  speech_threshold: 0.5            # Silero VAD probability threshold (bundled in whisper_trt.vad)
+  max_filter_window: 5             # chunks of hangover before ending a speech segment
+
+output:
+  mode: stdout                     # stdout | file
+  file_path: output/transcript.log

@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-compose.yml — Jetson WhisperTRT Pipeline
+#  JetPack 6.x / L4T R36
+#
+#  Usage:
+#    docker compose up               # run the live transcription pipeline
+#    docker compose run --rm dev     # interactive dev shell
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+
+  # ── Production: run the live transcription pipeline ──────────────────────
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jetson-whisper-trt:latest
+    runtime: nvidia                       # ensure GPU access
+    ipc: host                             # NVIDIA base image requires this — default 64MB
+                                           # /dev/shm silently deadlocks PyTorch multiprocessing
+                                           # (see jetson-yolov8-trt's docker-compose.yml for the
+                                           # incident this note comes from)
+    network_mode: host
+    privileged: false
+    devices:
+      - /dev/snd:/dev/snd                  # ALSA audio devices (mic input)
+    group_add:
+      - audio
+    volumes:
+      - /opt/models/jetson-whisper-trt:/root/.cache/whisper_trt  # shared TensorRT engine cache
+                                                                   # (see embedded-ai-chain's
+                                                                   # docs/shared-storage.md)
+      - ./configs:/workspace/configs:ro    # read-only config mount
+      - ./output:/workspace/output         # write transcripts / recordings
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    command: python3 scripts/live_transcribe.py --config configs/pipeline.yaml
+    restart: "no"
+
+  # ── Dev shell: interactive container with all tools ───────────────────────
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: jetson-whisper-trt:dev
+    runtime: nvidia
+    ipc: host
+    network_mode: host
+    privileged: false
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio
+    volumes:
+      - .:/workspace                       # full repo mounted for live editing
+      - /opt/models/jetson-whisper-trt:/root/.cache/whisper_trt  # shadows the container's
+                                                                   # default cache path with
+                                                                   # shared storage
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    stdin_open: true
+    tty: true
+    command: /bin/bash
