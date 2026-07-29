@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Makefile — Jetson WhisperTRT developer shortcuts
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark live clean clean-docker
+.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark validate-librispeech live clean clean-docker
 
 DOCKER_IMAGE  := jetson-whisper-trt:latest
 DOCKER_DEV    := jetson-whisper-trt:dev
@@ -9,6 +9,7 @@ COMPOSE       := docker compose
 MODEL         ?= base.en
 BACKEND       ?= whisper_trt
 CACHE_DIR     := /opt/models/jetson-whisper-trt
+DATASETS      ?= /opt/datasets
 
 help:           ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -49,6 +50,15 @@ transcribe-file: ## Transcribe a WAV file (AUDIO=path, MODEL=base.en, BACKEND=wh
 
 benchmark:      ## Compare whisper / whisper_trt latency+memory (AUDIO=path, MODEL=base.en)
 	$(COMPOSE) run --rm dev python scripts/benchmark.py --audio $(AUDIO) --model $(MODEL)
+
+validate-librispeech: ## WER on LibriSpeech test-clean (MODEL=base.en, LIMIT=100, BACKEND=whisper_trt)
+	$(COMPOSE) run --rm \
+	  -v $(DATASETS)/librispeech:/dataset/librispeech:ro \
+	  dev python scripts/validate_librispeech.py \
+	  --model $(MODEL) \
+	  --backend $(BACKEND) \
+	  $(if $(LIMIT),--limit $(LIMIT),) \
+	  --results-json output/librispeech_results.json
 
 # ── Housekeeping ──────────────────────────────────────────────────────────────
 clean:          ## Remove __pycache__, .pyc (does NOT touch /opt/models — shared storage)

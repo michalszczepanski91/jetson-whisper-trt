@@ -38,6 +38,7 @@ RUN pip3 install --no-cache-dir \
     psutil==5.9.8 \
     PyYAML \
     rich==13.7.1 \
+    jiwer==3.0.4 \
     jupyterlab==4.2.3 \
     ipython==8.25.0 \
     ipdb==0.13.13 \

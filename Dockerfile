@@ -59,7 +59,8 @@ RUN pip3 install --no-cache-dir \
     pyaudio==0.2.14 \
     psutil==5.9.8 \
     PyYAML \
-    rich==13.7.1
+    rich==13.7.1 \
+    jiwer==3.0.4
 
 # onnx_graphsurgeon — NVIDIA's private package index, not on public PyPI. Needed
 # by torch2trt at engine-build time (whisper_trt's decoder conversion path hits

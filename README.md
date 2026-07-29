@@ -135,6 +135,24 @@ make run           # production image
 Speaks into the configured mic, VAD-gates on speech, transcribes each segment, prints
 (and optionally logs to `output/transcript.log`, see `configs/pipeline.yaml`).
 
+### 7. Accuracy (WER) on LibriSpeech test-clean
+```bash
+make validate-librispeech MODEL=base.en LIMIT=50   # quick sanity check
+make validate-librispeech MODEL=base.en             # full 2620-utterance set (~20 min)
+```
+Dataset: `/opt/datasets/librispeech` (staged the same way as `jetson-yolov8-trt`'s
+COCO val2017 — see `embedded-ai-chain`'s `docs/shared-storage.md`). Scores against
+OpenAI's own `EnglishTextNormalizer` (matches how the Whisper paper computes WER —
+without it, casing/punctuation differences inflate the error count without reflecting
+real transcription mistakes). Results appended to `output/librispeech_results.json`.
+
+LibriSpeech `test-clean` is clean, studio-mic read audiobook speech — it validates the
+harness against a standard, citable number, but doesn't tell you how this actually
+behaves on this robot's own mic, at conversational distance, with background noise,
+or whether it hallucinates during silence. That's what the bespoke test corpus in
+`embedded-ai-chain`'s `docs/TODO.md` §2b is for — a separate, more effortful task
+(real recording, not a download).
+
 ---
 
 ## Other Commands
