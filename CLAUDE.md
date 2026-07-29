@@ -42,7 +42,18 @@ make clean-docker         # Remove Docker images
 ```
 Mic (PyAudio, single channel) → Silero VAD (ONNX Runtime, bundled in whisper_trt.vad)
   → speech segment buffering → WhisperTRT.transcribe() → stdout / output/transcript.log
+                                                         → BridgeClient → embedded-ai-chain
+                                                           (host, TCP, network_mode: host)
 ```
+
+**Why a socket bridge to `embedded-ai-chain` instead of running in-process like
+`yolo_producer.py` does for YOLO**: `torch` itself fails a basic CUDA matmul in that
+repo's own `.venv` on this device (`CUBLAS_STATUS_ALLOC_FAILED`, not fixable by pinning
+a different package version — a real mismatch between generic PyPI CUDA packages and
+Jetson's `nvgpu` driver stack). This container doesn't have that problem. STT producing
+one discrete event per utterance (not ~30/sec like YOLO) means a socket hop's latency
+is a non-issue here in a way it wouldn't be for the vision producers. See the README's
+"Talking to embedded-ai-chain" section for the full reasoning.
 
 **Why wrap `whisper_trt` instead of a bespoke PT→ONNX→TensorRT export** (the approach
 used in `jetson-yolov8-trt`): YOLOv8 is a single-pass detector, straightforward to

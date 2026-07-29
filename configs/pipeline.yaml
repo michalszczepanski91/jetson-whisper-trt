@@ -29,3 +29,10 @@ vad:
 output:
   mode: stdout                     # stdout | file
   file_path: output/transcript.log
+
+bridge:
+  enabled: true                    # send each transcript to embedded-ai-chain's
+                                    # SttBridge (src/stt_bridge.py) over TCP
+  host: 127.0.0.1                  # reachable directly — docker-compose.yml uses
+                                    # network_mode: host for both services
+  port: 8765

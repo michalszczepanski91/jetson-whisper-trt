@@ -15,6 +15,8 @@ Usage (inside dev container):
 """
 
 import argparse
+import json
+import socket
 import sys
 import time
 from collections import deque
@@ -23,6 +25,51 @@ from pathlib import Path
 import numpy as np
 import pyaudio
 import yaml
+
+
+class BridgeClient:
+    """Sends each transcript to embedded-ai-chain's host-side SttBridge
+    (src/stt_bridge.py) over a plain TCP socket — this container's
+    docker-compose.yml uses network_mode: host, so 127.0.0.1 on the host is
+    directly reachable, no port mapping needed.
+
+    Lazily connects and reconnects on failure rather than raising: the host
+    orchestrator may not be up yet (or may restart), and a live mic session
+    should keep running (and keep printing/logging locally) regardless of
+    whether anything is listening on the other end.
+    """
+
+    def __init__(self, host: str, port: int):
+        self._host = host
+        self._port = port
+        self._sock: socket.socket | None = None
+
+    def send(self, text: str, transcribe_seconds: float) -> None:
+        line = (json.dumps({"text": text, "transcribe_seconds": transcribe_seconds}) + "\n").encode()
+        for attempt in range(2):  # one retry after a fresh reconnect
+            try:
+                if self._sock is None:
+                    self._sock = socket.create_connection((self._host, self._port), timeout=1.0)
+                self._sock.sendall(line)
+                return
+            except OSError as exc:
+                print(f"  (bridge send failed, will retry connecting: {exc})")
+                if self._sock is not None:
+                    try:
+                        self._sock.close()
+                    except OSError:
+                        pass
+                self._sock = None
+                if attempt == 1:
+                    print("  (bridge unreachable, continuing without it)")
+
+    def close(self) -> None:
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
 
 
 def find_device_index(name_contains: str) -> int:
@@ -53,6 +100,7 @@ def main():
     model_cfg = cfg["model"]
     vad_cfg = cfg["vad"]
     output_cfg = cfg["output"]
+    bridge_cfg = cfg.get("bridge", {})
 
     sample_rate = audio_cfg["sample_rate"]
     chunk_size = audio_cfg["chunk_size"]
@@ -76,12 +124,18 @@ def main():
     if output_cfg["mode"] == "file":
         out_fh = open(output_cfg["file_path"], "a")
 
+    bridge = None
+    if bridge_cfg.get("enabled", False):
+        bridge = BridgeClient(bridge_cfg.get("host", "127.0.0.1"), bridge_cfg.get("port", 8765))
+
     def emit(text: str, transcribe_s: float):
         line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ({transcribe_s:.2f}s) {text}"
         print(line)
         if out_fh:
             out_fh.write(line + "\n")
             out_fh.flush()
+        if bridge:
+            bridge.send(text, transcribe_s)
 
     pa = pyaudio.PyAudio()
     stream = pa.open(
@@ -128,6 +182,8 @@ def main():
         pa.terminate()
         if out_fh:
             out_fh.close()
+        if bridge:
+            bridge.close()
 
 
 if __name__ == "__main__":

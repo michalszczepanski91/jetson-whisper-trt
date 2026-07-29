@@ -21,8 +21,13 @@ jetson-whisper-trt/
 ├── docker/
 │   └── Dockerfile.dev              # Dev image (adds Jupyter, pytest, etc.)
 │
-├── src/                             # (placeholder) STT producer glue for the
-│                                    # embedded-ai-chain scene-state integration
+├── src/                             # (unused placeholder — see "Talking to
+│                                    # embedded-ai-chain" below for why this
+│                                    # repo stays standalone, no shared code)
+│
+├── tests/
+│   └── test_live_transcribe.py     # BridgeClient unit tests (mic/GPU parts
+│                                    # need real hardware, not unit-testable)
 │
 ├── scripts/
 │   ├── validate_install.py         # Env sanity check (CUDA, TensorRT, torch2trt,
@@ -84,6 +89,38 @@ revisited — they may no longer be needed, or may need adjusting for a new pinn
 
 ---
 
+## Talking to `embedded-ai-chain`
+
+`embedded-ai-chain`'s vision producers (`yolo_producer.py`) run in-process on the host,
+sharing an in-memory `scene_state.py` object — no IPC, since YOLO writes ~30 times a
+second and any per-frame round-trip would reintroduce the latency `scene_state.py`
+exists to avoid. STT doesn't have that constraint: it produces one discrete event per
+spoken utterance (a few times a minute at most), so it doesn't need to run in the same
+process, or even avoid IPC at all.
+
+That matters because `torch` itself doesn't reliably run in `embedded-ai-chain`'s own
+`.venv` on this device — a plain CUDA matmul fails with `CUBLAS_STATUS_ALLOC_FAILED`
+regardless of which `nvidia-cublas-cu12` version is pinned, most likely because generic
+PyPI CUDA packages (built for standard desktop/server GPUs) don't reliably work against
+Jetson's own `nvgpu` driver stack — which is exactly why NVIDIA maintains a separate,
+Jetson-tested pip index in the first place. This container doesn't have that problem
+(NVIDIA's own image, built and validated for Jetson).
+
+So: `live_transcribe.py` sends each transcript to `embedded-ai-chain`'s host process
+(`src/stt_bridge.py`) over a plain TCP socket — `docker-compose.yml` uses
+`network_mode: host` for both services, so `127.0.0.1` on the host is directly
+reachable from inside the container, no port mapping needed. `BridgeClient`
+(in `scripts/live_transcribe.py`) connects lazily and reconnects on failure rather
+than raising — the host orchestrator may not be up yet, or may restart, and a live
+mic session should keep running (and keep printing/logging locally) regardless.
+Controlled by `configs/pipeline.yaml`'s `bridge:` section.
+
+The received transcripts are **not** written into `scene_state` — that store is
+vision-only (see its own docstring). They're delivered via a plain `queue.Queue` for
+whatever consumes them (the orchestrator, not yet built).
+
+---
+
 ## Workflow
 
 ### 1. Build the dev image
@@ -133,7 +170,9 @@ make live          # inside the dev container, for iterating
 make run           # production image
 ```
 Speaks into the configured mic, VAD-gates on speech, transcribes each segment, prints
-(and optionally logs to `output/transcript.log`, see `configs/pipeline.yaml`).
+(and optionally logs to `output/transcript.log`, see `configs/pipeline.yaml`), and —
+if `bridge.enabled` in `configs/pipeline.yaml` — sends each transcript to
+`embedded-ai-chain`'s host process. See "Talking to embedded-ai-chain" below.
 
 ### 7. Accuracy (WER) on LibriSpeech test-clean
 ```bash

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Makefile — Jetson WhisperTRT developer shortcuts
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark validate-librispeech export-onnx live clean clean-docker
+.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark validate-librispeech export-onnx live test clean clean-docker
 
 DOCKER_IMAGE  := jetson-whisper-trt:latest
 DOCKER_DEV    := jetson-whisper-trt:dev
@@ -36,6 +36,9 @@ live:           ## Run the live transcription pipeline inside the dev container
 
 validate:       ## Verify environment with scripts/validate_install.py
 	$(COMPOSE) run --rm dev python scripts/validate_install.py
+
+test:           ## Run unit tests (BridgeClient - the mic/GPU parts need real hardware)
+	$(COMPOSE) run --rm dev python -m pytest tests/ -v
 
 list-devices:   ## List PortAudio input devices visible inside the container
 	$(COMPOSE) run --rm dev python -c "\
