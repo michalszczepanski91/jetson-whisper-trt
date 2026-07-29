@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Makefile — Jetson WhisperTRT developer shortcuts
 # ─────────────────────────────────────────────────────────────────────────────
-.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark validate-librispeech live clean clean-docker
+.PHONY: help build build-dev shell run validate list-devices transcribe-file benchmark validate-librispeech export-onnx live clean clean-docker
 
 DOCKER_IMAGE  := jetson-whisper-trt:latest
 DOCKER_DEV    := jetson-whisper-trt:dev
@@ -59,6 +59,11 @@ validate-librispeech: ## WER on LibriSpeech test-clean (MODEL=base.en, LIMIT=100
 	  --backend $(BACKEND) \
 	  $(if $(LIMIT),--limit $(LIMIT),) \
 	  --results-json output/librispeech_results.json
+
+export-onnx:    ## Export encoder+decoder ONNX for MODEL=base.en to /opt/models/jetson-whisper-trt/onnx
+	$(COMPOSE) run --rm \
+	  -v $(CACHE_DIR)/onnx:/opt/models/jetson-whisper-trt/onnx \
+	  dev python scripts/export_onnx.py --model $(MODEL)
 
 # ── Housekeeping ──────────────────────────────────────────────────────────────
 clean:          ## Remove __pycache__, .pyc (does NOT touch /opt/models — shared storage)

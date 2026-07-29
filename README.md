@@ -153,6 +153,18 @@ or whether it hallucinates during silence. That's what the bespoke test corpus i
 `embedded-ai-chain`'s `docs/TODO.md` §2b is for — a separate, more effortful task
 (real recording, not a download).
 
+### 8. Export to ONNX
+```bash
+make export-onnx MODEL=base.en
+```
+`whisper_trt` only ever builds ONNX in-memory as an intermediate step toward a
+TensorRT engine — it never saves the file. This reuses its own encoder/decoder
+wrapper modules and dummy-input shapes to export two portable ONNX files (encoder
+and decoder are separate graphs — the decoder runs once per generated token,
+taking the encoder's fixed output as an input) to
+`/opt/models/jetson-whisper-trt/onnx/`, runnable with plain `onnxruntime`, no
+TensorRT/torch2trt required.
+
 ---
 
 ## Other Commands
